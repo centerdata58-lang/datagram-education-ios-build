@@ -1,0 +1,94 @@
+name: Education private-source iOS validation
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact approved 40-character commit from the private Education repository
+        required: true
+        type: string
+        default: 8070cb57d1a16cc88cd5a050d493aae77e466745
+permissions:
+  contents: read
+concurrency:
+  group: education-public-ios-build
+  cancel-in-progress: false
+jobs:
+  native:
+    if: github.actor == 'centerdata58-lang' && github.repository_owner == 'centerdata58-lang'
+    runs-on: macos-26
+    timeout-minutes: 75
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Verify exact source revision and scoped access
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_ACCESS: ${{ secrets.EDUCATION_SOURCE_SSH_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 64
+          test -n "$SOURCE_ACCESS" || {
+            echo 'Read-only private-source access has not been configured. No source was published or fetched.'
+            exit 78
+          }
+      - name: Checkout approved private application source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: centerdata58-lang/datagram-education
+          ref: ${{ inputs.source_sha }}
+          path: source
+          ssh-key: ${{ secrets.EDUCATION_SOURCE_SSH_KEY }}
+          persist-credentials: false
+          fetch-depth: 1
+          show-progress: false
+      - name: Verify retrieved revision
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        working-directory: source
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - name: Configure Flutter without publishing application caches
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.3'
+          channel: stable
+          cache: false
+      - name: Configure Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Validate source and compile native iOS
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          private_logs="$RUNNER_TEMP/education-private-results"
+          mkdir -p "$private_logs"
+          stage() {
+            label="$1"; shift
+            if "$@" > "$private_logs/$label.log" 2>&1; then
+              printf 'PASS: %s\n' "$label"
+            else
+              code=$?
+              printf 'FAIL: %s (exit %s). Private logs were not published.\n' "$label" "$code"
+              exit "$code"
+            fi
+          }
+          stage identity python3 ops/ios/check_identity.py
+          stage backend node --test backend/test/*.test.mjs
+          stage dependencies flutter pub get --enforce-lockfile
+          stage analysis flutter analyze
+          stage flutter-tests flutter test
+          stage iphone-ipad-native bash ops/ios/validate_native.sh
+          stage ios-device-compile flutter build ios --release --no-codesign
+          printf 'Native validation completed. This is not a signed IPA or a TestFlight upload.\n'
+      - name: Remove private working copy from ephemeral runner
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_WORKSPACE:-}" != ''
+          test "${RUNNER_TEMP:-}" != ''
+          # Only this disposable runner checkout and its private logs are removed.
+          rm -rf -- "$GITHUB_WORKSPACE/source" "$RUNNER_TEMP/education-private-results"
