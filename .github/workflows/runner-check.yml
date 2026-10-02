@@ -1,0 +1,18 @@
+name: Public macOS runner availability
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  availability:
+    if: github.actor == 'centerdata58-lang'
+    runs-on: macos-26
+    timeout-minutes: 5
+    steps:
+      - name: Confirm standard macOS runner starts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -s)" = Darwin
+          xcodebuild -version
+          printf 'Public macOS runner started successfully. No private source or signing material loaded.\n'
