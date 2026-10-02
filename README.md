@@ -1,21 +1,31 @@
 # Datagram Education iOS build orchestration
 
-This public repository contains workflow definitions only. Application source
-remains in `centerdata58-lang/datagram-education`, which is private.
+This public repository contains workflow definitions, signing orchestration and
+synthetic tests only. The app source stays in the private `datagram-education`
+repository. No application source, signing credentials or raw IPA is published here.
 
-`runner-check.yml` proves standard macOS runner availability without loading source
-or credentials. Run 37017550611 completed successfully on October 2, 2026.
+## Verified / not yet verified
+The original standard macOS availability check succeeded (run 37017550611).
+The signing safeguards have synthetic unit tests; these do not establish native
+application success or TestFlight delivery. Source-access and Apple-signing Actions
+secrets must be configured by the owner before the application workflow can run.
+They have not been installed by the setup described here.
 
-`ios-build.yml` is an owner-triggered native build pipeline pinned to an exact
-private-source commit and fixed action revisions. It requires a read-only,
-repository-scoped access key stored in the encrypted `EDUCATION_SOURCE_SSH_KEY`
-Actions secret. That secret has not yet been configured; the pipeline fails closed
-instead of publishing source or substituting a broad personal token.
+## Workflows
+- `runner-check.yml`: source-free macOS availability check.
+- `workflow-contract.yml`: tests public signing guards with synthetic data, no secrets.
+- `ios-build.yml`: owner-only, exact-private-commit iOS validation. Select `testflight`
+  to sign and upload only after all iPhone/iPad native checks pass.
 
-No pull-request triggers, publicly readable app caches, raw private logs or
-unencrypted application artifacts are enabled. Application compilation/testing
-output remains on the ephemeral runner and is not published. The runner is not
-the production website machine.
+The upload workflow validates the existing Education App Store provisioning profile,
+its certificate/team/push entitlement, expiration and app identity. It checks Apple
+for a new build number, creates a signed IPA, validates it, then uploads to App Store
+Connect. It does not request external beta review, public App Store review or release.
+A successful upload is explicitly distinguished from Apple processing completion.
 
-The availability check passed; the private-source pipeline and signed TestFlight
-delivery have not yet run. Existing Apple signing material has not been moved here.
+Public runs do not publish private app caches, source logs, simulator screenshots
+or unencrypted binaries. Failed native tests cannot be replaced by a successful
+runner-availability or unit-test result. No production website host is used to build.
+
+See `SETUP.md` for the one-time owner-controlled configuration. Never paste secret
+values into an issue, chat, README, workflow YAML or repository variable.
